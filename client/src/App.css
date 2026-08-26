@@ -1,0 +1,59 @@
+/* Elegant editorial serif and romantic script fonts */
+@import url('https://fonts.googleapis.com/css2?family=Alex+Brush&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&display=swap');
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  /* Soft Sunbeam - The exact middle ground for a happy yet soothing glow */
+  background-color: #FEECAC; 
+  background-size: 200% 200%;
+  animation: softBreathe 10s ease infinite;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  
+  /* Delicate Diamond Cursor */
+  cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="%23E8C5C8" stroke-width="1.5"><path d="M12 2l2.4 7.6 7.6 2.4-7.6 2.4L12 22l-2.4-7.6-7.6-2.4 7.6-2.4L12 2z" fill="%23FFFFFF"/></svg>') 12 12, auto;
+}
+
+@keyframes softBreathe {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+@keyframes spinSlow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulseSoft {
+  0% { transform: scale(0.98); opacity: 0.7; }
+  50% { transform: scale(1.02); opacity: 1; }
+  100% { transform: scale(0.98); opacity: 0.7; }
+}
+
+.sparkle-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none; /* Ensures the sparkles don't block clicks */
+  z-index: 9999;
+  overflow: hidden;
+}
+
+.falling-sparkle {
+  position: absolute;
+  top: -50px;
+  animation: fallDown linear forwards;
+  opacity: 0.8;
+  text-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+}
+
+@keyframes fallDown {
+  0% { transform: translateY(0) rotate(0deg); opacity: 1; }
+  80% { opacity: 1; }
+  100% { transform: translateY(110vh) rotate(360deg); opacity: 0; }
+}

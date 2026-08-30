@@ -11,7 +11,11 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
 // ---------------- MIDDLEWARE & RATE LIMITING ---------------- //
-app.use(cors());
+// UPDATED: Now securely accepts requests from your live domains
+app.use(cors({
+  origin: ['https://www.susansbeautyconsulting.com', 'https://susiesbeauty-oss.github.io', 'http://localhost:3000'],
+  credentials: true
+}));
 app.use(express.json());
 
 const authLimiter = rateLimit({
@@ -186,7 +190,6 @@ const syncCJProducts = async () => {
 
     if (rawProducts.length === 0) {
       console.log("⚠️ No products retrieved from connect/list. Pausing for 2 seconds to avoid rate limits...");
-      // THE RATE LIMIT FIX: 2 second delay before hitting the fallback endpoint
       await delay(2000); 
       
       console.log("🔍 Falling back to query myProduct endpoint...");
@@ -198,12 +201,11 @@ const syncCJProducts = async () => {
       return;
     }
 
-    // Extract unique Product IDs to fetch full product cards
     const uniquePids = [...new Set(rawProducts.map(item => item.pid || item.id || item.productId))].filter(Boolean);
     console.log(`📦 Fetching full product cards for ${uniquePids.length} unique items...`);
 
     for (const pid of uniquePids) {
-      await delay(1200); // Gentle throttling
+      await delay(1200);
       try {
         const detailRes = await axios.get('https://developers.cjdropshipping.com/api2.0/v1/product/query', {
           headers: { 'CJ-Access-Token': accessToken },
@@ -215,14 +217,11 @@ const syncCJProducts = async () => {
           const title = details.productNameEn || details.productName;
           const cleanTitle = title.toLowerCase().trim();
           
-          // Dynamic Shipping Calculation based on weight
           const weight = parseFloat(details.productWeight || 200);
-          const estimatedShipping = 4.50 + (weight * 0.015); // Base fee + weight metric
+          const estimatedShipping = 4.50 + (weight * 0.015); 
           
-          // Map exact variations
           const mappedVariants = (details.variants || []).map(v => {
             const baseVPrice = parseFloat(v.sellPrice || 0);
-            // Ensure shipping cost is factored in before markup
             const finalPrice = baseVPrice > 0 ? parseFloat(((baseVPrice + estimatedShipping) * 3).toFixed(2)) : 19.99;
             
             return {
@@ -353,8 +352,9 @@ app.post('/api/create-checkout-session', authenticateToken, async (req, res) => 
         },
         quantity: 1,
       }],
-      success_url: `http://localhost:3000/?success=true&tier=${tier}`,
-      cancel_url: `http://localhost:3000/?canceled=true`,
+      // UPDATED: Now points to live domain
+      success_url: `https://www.susansbeautyconsulting.com/?success=true&tier=${tier}`,
+      cancel_url: `https://www.susansbeautyconsulting.com/?canceled=true`,
     });
 
     res.json({ url: session.url });
@@ -382,19 +382,16 @@ app.post('/api/cart-checkout', async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
-      
-      // NEW REQUIRED ADDITIONS FOR DROPSHIPPING
       shipping_address_collection: {
-        allowed_countries: ['US', 'CA', 'GB', 'AU'], // Collect address so products can be shipped
+        allowed_countries: ['US', 'CA', 'GB', 'AU'], 
       },
       metadata: {
-        // Track the SKUs so Susan knows exactly which items to order via CJ Dropshipping
         skus: items.map(i => i.sku).join(',').substring(0, 499) 
       },
-
       line_items,
-      success_url: `http://localhost:3000/?cart_success=true`,
-      cancel_url: `http://localhost:3000/?cart_canceled=true`,
+      // UPDATED: Now points to live domain
+      success_url: `https://www.susansbeautyconsulting.com/?cart_success=true`,
+      cancel_url: `https://www.susansbeautyconsulting.com/?cart_canceled=true`,
     });
 
     res.json({ url: session.url });
@@ -404,6 +401,7 @@ app.post('/api/cart-checkout', async (req, res) => {
 });
 
 // ---------------- SERVER INITIALIZATION ---------------- //
+// Dynamic PORT mapping for Render is already correct!
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/beauty_app';
 

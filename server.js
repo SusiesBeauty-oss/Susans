@@ -153,7 +153,7 @@ const fetchFromCJEndpoint = async (endpointUrl, accessToken) => {
       if (list.length > 0) {
         itemsList.push(...list);
         page++;
-        await delay(1200);
+        await delay(1200); // Pagination delay
       } else {
         hasMore = false;
       }
@@ -185,6 +185,11 @@ const syncCJProducts = async () => {
     let rawProducts = await fetchFromCJEndpoint('https://developers.cjdropshipping.com/api2.0/v1/product/connect/list', accessToken);
 
     if (rawProducts.length === 0) {
+      console.log("⚠️ No products retrieved from connect/list. Pausing for 2 seconds to avoid rate limits...");
+      // THE RATE LIMIT FIX: 2 second delay before hitting the fallback endpoint
+      await delay(2000); 
+      
+      console.log("🔍 Falling back to query myProduct endpoint...");
       rawProducts = await fetchFromCJEndpoint('https://developers.cjdropshipping.com/api2.0/v1/product/myProduct/query', accessToken);
     }
 

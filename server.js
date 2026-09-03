@@ -11,7 +11,6 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
 // ---------------- MIDDLEWARE & RATE LIMITING ---------------- //
-// UPDATED: Now securely accepts requests from your live domains
 app.use(cors({
   origin: ['https://www.susansbeautyconsulting.com', 'https://susiesbeauty-oss.github.io', 'http://localhost:3000'],
   credentials: true
@@ -39,6 +38,19 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
+// Admin authentication middleware
+const authenticateAdmin = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required.' });
+    }
+    next();
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to verify administrative privileges.' });
+  }
+};
+
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // ---------------- MONGODB SCHEMAS ---------------- //
@@ -47,6 +59,7 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   membershipTier: { type: String, default: 'luminary' },
+  role: { type: String, default: 'user' }, 
   createdAt: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', userSchema);
@@ -157,7 +170,7 @@ const fetchFromCJEndpoint = async (endpointUrl, accessToken) => {
       if (list.length > 0) {
         itemsList.push(...list);
         page++;
-        await delay(1200); // Pagination delay
+        await delay(1200); 
       } else {
         hasMore = false;
       }
@@ -215,7 +228,6 @@ const syncCJProducts = async () => {
         const details = detailRes.data?.data;
         if (details) {
           const title = details.productNameEn || details.productName;
-          const cleanTitle = title.toLowerCase().trim();
           
           const weight = parseFloat(details.productWeight || 200);
           const estimatedShipping = 4.50 + (weight * 0.015); 
@@ -289,7 +301,7 @@ app.post('/api/users/register', authLimiter, async (req, res) => {
     const savedUser = await newUser.save();
     const token = jwt.sign({ _id: savedUser._id }, process.env.JWT_SECRET || 'fallback_secret_key', { expiresIn: '24h' });
 
-    res.status(201).json({ user: { id: savedUser._id, name: savedUser.name, email: savedUser.email, membershipTier: savedUser.membershipTier }, token });
+    res.status(201).json({ user: { id: savedUser._id, name: savedUser.name, email: savedUser.email, membershipTier: savedUser.membershipTier, role: savedUser.role }, token });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -307,7 +319,7 @@ app.post('/api/users/login', authLimiter, async (req, res) => {
 
     const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET || 'fallback_secret_key', { expiresIn: '24h' });
 
-    res.json({ user: { id: user._id, name: user.name, email: user.email, membershipTier: user.membershipTier }, token });
+    res.json({ user: { id: user._id, name: user.name, email: user.email, membershipTier: user.membershipTier, role: user.role }, token });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -326,7 +338,48 @@ app.post('/api/consultations', authenticateToken, async (req, res) => {
   }
 });
 
-// Subscription Membership Checkout
+// ---------------- ADMIN ROUTES ---------------- //
+
+app.get('/api/admin/stats', authenticateToken, authenticateAdmin, async (req, res) => {
+  try {
+    const activeMembers = await User.countDocuments({ role: 'user' });
+    const pendingConsultations = await Consultation.countDocuments();
+    const totalProducts = await Product.countDocuments();
+    res.json({ activeMembers, pendingConsultations, totalProducts });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, res) => {
+  try {
+    const users = await User.find({}, '-password').sort({ createdAt: -1 });
+    res.json(users);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/admin/sync-cj', authenticateToken, authenticateAdmin, async (req, res) => {
+  try {
+    syncCJProducts(); 
+    res.json({ message: 'CJ Dropshipping sync initiated successfully.' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/admin/consultations', authenticateToken, authenticateAdmin, async (req, res) => {
+  try {
+    const consultations = await Consultation.find().populate('userId', 'name email').sort({ createdAt: -1 });
+    res.json(consultations);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ---------------- CHECKOUT ROUTES ---------------- //
+
 app.post('/api/create-checkout-session', authenticateToken, async (req, res) => {
   try {
     const { tier } = req.body;
@@ -352,7 +405,6 @@ app.post('/api/create-checkout-session', authenticateToken, async (req, res) => 
         },
         quantity: 1,
       }],
-      // UPDATED: Now points to live domain
       success_url: `https://www.susansbeautyconsulting.com/?success=true&tier=${tier}`,
       cancel_url: `https://www.susansbeautyconsulting.com/?canceled=true`,
     });
@@ -363,7 +415,6 @@ app.post('/api/create-checkout-session', authenticateToken, async (req, res) => 
   }
 });
 
-// Single Purchase Cart Checkout (UPDATED)
 app.post('/api/cart-checkout', async (req, res) => {
   try {
     const { items } = req.body;
@@ -389,7 +440,6 @@ app.post('/api/cart-checkout', async (req, res) => {
         skus: items.map(i => i.sku).join(',').substring(0, 499) 
       },
       line_items,
-      // UPDATED: Now points to live domain
       success_url: `https://www.susansbeautyconsulting.com/?cart_success=true`,
       cancel_url: `https://www.susansbeautyconsulting.com/?cart_canceled=true`,
     });
@@ -401,7 +451,6 @@ app.post('/api/cart-checkout', async (req, res) => {
 });
 
 // ---------------- SERVER INITIALIZATION ---------------- //
-// Dynamic PORT mapping for Render is already correct!
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/beauty_app';
 

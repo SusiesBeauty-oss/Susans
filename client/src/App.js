@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Helper function to enforce global naming updates across components
 const getDisplayTitle = (product) => {
   if (!product || !product.title) return '';
   let displayTitle = product.title;
@@ -123,7 +122,7 @@ const EmpowermentLoader = ({ text }) => (
 const BlueprintCard = ({ label, value }) => (
   <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', border: '1px solid #E8C5C8', borderRadius: '15px', padding: '20px', boxShadow: '0 4px 15px rgba(232, 197, 200, 0.15)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
     <p style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: '#A89999', fontFamily: "'Cormorant Garamond', serif", fontStyle: 'italic' }}>{label}</p>
-    <p style={{ margin: 0, fontSize: '1.4rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", fontWeight: 'bold' }}>{value || 'Not specified'}</p>
+    <p style={{ margin: 0, fontSize: '1.4rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", fontWeight: 'bold' }}>{value !== undefined ? value : 'Not specified'}</p>
   </div>
 );
 
@@ -312,14 +311,20 @@ function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
+  // Admin Data State
+  const [adminStats, setAdminStats] = useState({ activeMembers: 0, pendingConsultations: 0, totalProducts: 0 });
+  const [adminMembers, setAdminMembers] = useState([]);
+  const [showMemberTable, setShowMemberTable] = useState(false);
+
   const [quizAnswers, setQuizAnswers] = useState({ skinType: '', primaryGoal: '', climate: '', skinSensitivity: '', complexion: '', undertone: '', eyeColor: '', faceShape: '', makeupVibe: '', routineFocus: '' });
-  const [userDetails, setUserDetails] = useState({ name: '', email: '', password: '' });
+  
+  const [userDetails, setUserDetails] = useState({ name: '', email: '', password: '', role: 'user' });
   const [loginCredentials, setLoginCredentials] = useState({ email: '', password: '' });
 
   useEffect(() => {
     const fetchBackendData = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/products');
+        const response = await fetch('https://susans.onrender.com/api/products');
         if (response.ok) {
           const data = await response.json();
           setBackendProducts(data);
@@ -355,6 +360,38 @@ function App() {
     }
   }, []);
 
+  // Fetch admin dynamic data when navigating to Admin Step 6
+  useEffect(() => {
+    if (step === 6) {
+      fetchAdminData();
+    }
+  }, [step]);
+
+  const fetchAdminData = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    try {
+      const statsRes = await fetch('https://susans.onrender.com/api/admin/stats', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setAdminStats(statsData);
+      }
+
+      const usersRes = await fetch('https://susans.onrender.com/api/admin/users', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        setAdminMembers(usersData);
+      }
+    } catch (err) {
+      console.error('Failed to load admin stats/users:', err);
+    }
+  };
+
   const handleAddToCart = (product) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.sku === product.sku);
@@ -381,7 +418,7 @@ function App() {
   const handleCartCheckout = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/cart-checkout', {
+      const res = await fetch('https://susans.onrender.com/api/cart-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: cart })
@@ -392,6 +429,23 @@ function App() {
       }
     } catch (error) {
       console.error('Checkout error:', error);
+    }
+    setIsLoading(false);
+  };
+
+  const triggerCjSync = async () => {
+    setIsLoading(true);
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch('https://susans.onrender.com/api/admin/sync-cj', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      alert(data.message || 'CJ Sync initiated');
+      fetchAdminData();
+    } catch (err) {
+      alert('Failed to trigger CJ catalog sync.');
     }
     setIsLoading(false);
   };
@@ -469,7 +523,7 @@ function App() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      await fetch('http://localhost:5000/api/consultations', {
+      await fetch('https://susans.onrender.com/api/consultations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(finalData), 
@@ -490,7 +544,7 @@ function App() {
   const handleCreateAccount = async () => {
     setIsLoading(true);
     try {
-      const regRes = await fetch('http://localhost:5000/api/users/register', {
+      const regRes = await fetch('https://susans.onrender.com/api/users/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...userDetails, membershipTier: selectedTier })
@@ -506,7 +560,8 @@ function App() {
       localStorage.setItem('token', regData.token);
 
       if (isSubscribing) {
-        const stripeRes = await fetch('http://localhost:5000/api/create-checkout-session', {
+        // FIXED: Removed double slash URL bug
+        const stripeRes = await fetch('https://susans.onrender.com/api/create-checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${regData.token}` },
           body: JSON.stringify({ tier: selectedTier }),
@@ -524,7 +579,7 @@ function App() {
   const handleLoginSubmit = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('http://localhost:5000/api/users/login', {
+      const res = await fetch('https://susans.onrender.com/api/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(loginCredentials)
@@ -533,10 +588,11 @@ function App() {
       
       if (res.ok) {
         localStorage.setItem('token', data.token);
-        setUserDetails(prev => ({ ...prev, name: data.user.name }));
+        setUserDetails(prev => ({ ...prev, name: data.user.name, role: data.user.role }));
         setSelectedTier(data.user.membershipTier);
         setIsSubscribing(data.user.membershipTier !== 'basic');
-        setStep(5); 
+        
+        setStep(data.user.role === 'admin' ? 6 : 5); 
       } else {
         alert(data.error || 'Login failed');
       }
@@ -548,7 +604,7 @@ function App() {
 
   const handleLogOut = () => {
     localStorage.removeItem('token');
-    setUserDetails({ name: '', email: '', password: '' });
+    setUserDetails({ name: '', email: '', password: '', role: 'user' });
     setLoginCredentials({ email: '', password: '' });
     setSelectedTier('luminary');
     setHasCompletedQuiz(false);
@@ -806,6 +862,56 @@ function App() {
                   </div>
                 </div>
               </>
+            )}
+          </div>
+        )}
+
+        {/* STEP 6: ADMIN PORTAL */}
+        {step === 6 && (
+          <div style={{ animation: 'fadeIn 1.5s ease', textAlign: 'left', width: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(232, 197, 200, 0.4)', paddingBottom: '15px' }}>
+              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: 'italic', color: '#A89999', fontSize: '1.2rem' }}>Susan's Operations Control</span>
+              <button onClick={handleLogOut} style={{ background: 'none', border: '1px solid #E8C5C8', borderRadius: '20px', padding: '5px 15px', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", cursor: 'pointer', fontSize: '1rem' }}>Sign Out</button>
+            </div>
+
+            <h1 style={{ fontSize: '3.8rem', margin: '0 0 10px 0', color: '#B38B8F', fontFamily: "'Alex Brush', cursive", fontWeight: '400' }}>Admin Portal</h1>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '40px' }}>
+              <BlueprintCard label="Active Members" value={adminStats.activeMembers} />
+              <BlueprintCard label="Completed Consultations" value={adminStats.pendingConsultations} />
+              <BlueprintCard label="Total Inventory Items" value={adminStats.totalProducts} />
+            </div>
+
+            <h2 style={{ fontSize: '2.5rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 20px 0' }}>Quick Actions</h2>
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '30px' }}>
+              <EmpowermentButton text="Sync CJ Catalog" onClick={triggerCjSync} />
+              <EmpowermentButton text={showMemberTable ? "Hide Member Data" : "View Member Data"} onClick={() => setShowMemberTable(!showMemberTable)} />
+            </div>
+
+            {showMemberTable && (
+              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', border: '1px solid #E8C5C8', borderRadius: '15px', padding: '20px', marginTop: '20px', overflowX: 'auto' }}>
+                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '1.8rem', color: '#5C5454', marginTop: 0 }}>Registered Members</h3>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #E8C5C8', textAlign: 'left', color: '#B38B8F' }}>
+                      <th style={{ padding: '10px' }}>Name</th>
+                      <th style={{ padding: '10px' }}>Email</th>
+                      <th style={{ padding: '10px' }}>Membership Tier</th>
+                      <th style={{ padding: '10px' }}>Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {adminMembers.map((m) => (
+                      <tr key={m._id} style={{ borderBottom: '1px solid rgba(232, 197, 200, 0.4)' }}>
+                        <td style={{ padding: '10px' }}>{m.name}</td>
+                        <td style={{ padding: '10px' }}>{m.email}</td>
+                        <td style={{ padding: '10px', textTransform: 'capitalize' }}>{m.membershipTier}</td>
+                        <td style={{ padding: '10px' }}>{m.role}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         )}

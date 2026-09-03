@@ -25,5 +25,8 @@
     "react-hot-toast": "^2.6.0",
     "react-router-dom": "^7.18.2",
     "stripe": "^22.5.0"
+  },
+  "devDependencies": {
+    "gh-pages": "^6.3.0"
   }
 }

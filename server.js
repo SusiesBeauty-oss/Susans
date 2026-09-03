@@ -23,32 +23,29 @@ const authLimiter = rateLimit({
   message: 'Too many authentication attempts, please try again after 15 minutes'
 });
 
-const authenticateToken = (req, res, next) => {
+const verifyToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
 
   try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key');
-    req.user = verified;
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key');
+    req.user = decoded; // Contains _id, role, membershipTier
     next();
   } catch (err) {
-    res.status(400).json({ error: 'Invalid token.' });
+    res.status(403).json({ error: 'Invalid or expired token.' });
   }
 };
 
-// Admin authentication middleware
-const authenticateAdmin = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.user._id);
-    if (!user || user.role !== 'admin') {
-      return res.status(403).json({ error: 'Admin access required.' });
+const requireAdmin = (req, res, next) => {
+  verifyToken(req, res, () => {
+    if (req.user && req.user.role === 'admin') {
+      next();
+    } else {
+      res.status(403).json({ error: 'Access denied. Administrator privileges required.' });
     }
-    next();
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to verify administrative privileges.' });
-  }
+  });
 };
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -58,10 +55,17 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  membershipTier: { type: String, default: 'luminary' },
-  role: { type: String, default: 'user' }, 
-  createdAt: { type: Date, default: Date.now }
-});
+  role: { 
+    type: String, 
+    enum: ['user', 'admin'], 
+    default: 'user' 
+  },
+  membershipTier: { 
+    type: String, 
+    enum: ['basic', 'radiance', 'luminary'], 
+    default: 'basic' 
+  }
+}, { timestamps: true });
 const User = mongoose.model('User', userSchema);
 
 const consultationSchema = new mongoose.Schema({
@@ -295,11 +299,16 @@ app.post('/api/users/register', authLimiter, async (req, res) => {
       name,
       email,
       password: hashedPassword,
-      membershipTier: membershipTier || 'luminary'
+      membershipTier: membershipTier || 'basic',
+      role: 'user'
     });
 
     const savedUser = await newUser.save();
-    const token = jwt.sign({ _id: savedUser._id }, process.env.JWT_SECRET || 'fallback_secret_key', { expiresIn: '24h' });
+    const token = jwt.sign(
+      { _id: savedUser._id, role: savedUser.role, membershipTier: savedUser.membershipTier }, 
+      process.env.JWT_SECRET || 'fallback_secret_key', 
+      { expiresIn: '24h' }
+    );
 
     res.status(201).json({ user: { id: savedUser._id, name: savedUser.name, email: savedUser.email, membershipTier: savedUser.membershipTier, role: savedUser.role }, token });
   } catch (error) {
@@ -317,7 +326,11 @@ app.post('/api/users/login', authLimiter, async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ error: 'Invalid email or password.' });
 
-    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET || 'fallback_secret_key', { expiresIn: '24h' });
+    const token = jwt.sign(
+      { _id: user._id, role: user.role, membershipTier: user.membershipTier }, 
+      process.env.JWT_SECRET || 'fallback_secret_key', 
+      { expiresIn: '24h' }
+    );
 
     res.json({ user: { id: user._id, name: user.name, email: user.email, membershipTier: user.membershipTier, role: user.role }, token });
   } catch (error) {
@@ -325,7 +338,7 @@ app.post('/api/users/login', authLimiter, async (req, res) => {
   }
 });
 
-app.post('/api/consultations', authenticateToken, async (req, res) => {
+app.post('/api/consultations', verifyToken, async (req, res) => {
   try {
     const newConsultation = new Consultation({
       ...req.body,
@@ -340,7 +353,7 @@ app.post('/api/consultations', authenticateToken, async (req, res) => {
 
 // ---------------- ADMIN ROUTES ---------------- //
 
-app.get('/api/admin/stats', authenticateToken, authenticateAdmin, async (req, res) => {
+app.get('/api/admin/stats', requireAdmin, async (req, res) => {
   try {
     const activeMembers = await User.countDocuments({ role: 'user' });
     const pendingConsultations = await Consultation.countDocuments();
@@ -351,7 +364,7 @@ app.get('/api/admin/stats', authenticateToken, authenticateAdmin, async (req, re
   }
 });
 
-app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, res) => {
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
   try {
     const users = await User.find({}, '-password').sort({ createdAt: -1 });
     res.json(users);
@@ -360,7 +373,7 @@ app.get('/api/admin/users', authenticateToken, authenticateAdmin, async (req, re
   }
 });
 
-app.post('/api/admin/sync-cj', authenticateToken, authenticateAdmin, async (req, res) => {
+app.post('/api/admin/sync-cj', requireAdmin, async (req, res) => {
   try {
     syncCJProducts(); 
     res.json({ message: 'CJ Dropshipping sync initiated successfully.' });
@@ -369,7 +382,7 @@ app.post('/api/admin/sync-cj', authenticateToken, authenticateAdmin, async (req,
   }
 });
 
-app.get('/api/admin/consultations', authenticateToken, authenticateAdmin, async (req, res) => {
+app.get('/api/admin/consultations', requireAdmin, async (req, res) => {
   try {
     const consultations = await Consultation.find().populate('userId', 'name email').sort({ createdAt: -1 });
     res.json(consultations);
@@ -380,7 +393,7 @@ app.get('/api/admin/consultations', authenticateToken, authenticateAdmin, async 
 
 // ---------------- CHECKOUT ROUTES ---------------- //
 
-app.post('/api/create-checkout-session', authenticateToken, async (req, res) => {
+app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
   try {
     const { tier } = req.body;
     let unit_amount = 4900; 

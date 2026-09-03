@@ -360,7 +360,6 @@ function App() {
     }
   }, []);
 
-  // Fetch admin dynamic data when navigating to Admin Step 6
   useEffect(() => {
     if (step === 6) {
       fetchAdminData();
@@ -560,7 +559,6 @@ function App() {
       localStorage.setItem('token', regData.token);
 
       if (isSubscribing) {
-        // FIXED: Removed double slash URL bug
         const stripeRes = await fetch('https://susans.onrender.com/api/create-checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${regData.token}` },
@@ -569,6 +567,10 @@ function App() {
         
         const stripeData = await stripeRes.json();
         if (stripeData.url) window.location.href = stripeData.url;
+      } else {
+        // Jump directly to the dashboard for free members
+        setIsLoading(false);
+        setStep(5);
       }
     } catch (err) {
       console.error('Failed to save user account:', err);
@@ -736,6 +738,28 @@ function App() {
             <p style={{ fontSize: '1.4rem', lineHeight: '1.8', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '15px auto 35px', maxWidth: '600px' }}>Join our exclusive membership to unlock Susan's famous Personalized Beauty Consultation Quiz and bespoke product curation.</p>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: '30px', flexWrap: 'wrap', marginBottom: '35px' }}>
+              
+              {/* Basic Access Card */}
+              <div style={{ border: '1px solid rgba(232, 197, 200, 0.6)', borderRadius: '20px', padding: '40px 30px', backgroundColor: 'rgba(255, 255, 255, 0.7)', flex: '1', minWidth: '300px', maxWidth: '400px', boxShadow: '0 10px 30px rgba(232, 197, 200, 0.15)' }}>
+                <h3 style={{ fontSize: '2.2rem', color: '#8A797A', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 10px 0' }}>Basic Access</h3>
+                <p style={{ fontSize: '1.8rem', color: '#5C5454', margin: '0 0 25px 0', fontFamily: "'Alex Brush', cursive" }}>Free</p>
+                <ul style={{ textAlign: 'left', listStyle: 'none', padding: 0, margin: '0 0 35px 0', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.25rem', lineHeight: '2' }}>
+                  <li><span style={{color: '#E8C5C8', marginRight: '10px'}}>✧</span> Full access to the Boutique</li>
+                  <li><span style={{color: '#E8C5C8', marginRight: '10px'}}>✧</span> Save your ritual bag</li>
+                  <li><span style={{color: '#E8C5C8', marginRight: '10px'}}>✧</span> Personal member dashboard</li>
+                  <li><span style={{color: 'transparent', marginRight: '10px'}}>✧</span></li>
+                </ul>
+                <EmpowermentButton 
+                  text="Select Free" 
+                  onClick={() => { 
+                    setSelectedTier('basic'); 
+                    setIsSubscribing(false); 
+                    setStep(3); 
+                  }} 
+                />
+              </div>
+
+              {/* The Luminary Circle Card */}
               <div style={{ border: '1px solid rgba(232, 197, 200, 0.6)', borderRadius: '20px', padding: '40px 30px', backgroundColor: 'rgba(255, 255, 255, 0.7)', flex: '1', minWidth: '300px', maxWidth: '400px', boxShadow: '0 10px 30px rgba(232, 197, 200, 0.15)' }}>
                 <h3 style={{ fontSize: '2.2rem', color: '#8A797A', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 10px 0' }}>The Luminary Circle</h3>
                 <p style={{ fontSize: '1.8rem', color: '#5C5454', margin: '0 0 25px 0', fontFamily: "'Alex Brush', cursive" }}>$49 <span style={{fontSize: '1rem', fontFamily: 'sans-serif', fontStyle: 'italic', color: '#A89999'}}>/ month</span></p>
@@ -748,6 +772,7 @@ function App() {
                 <EmpowermentButton text="Select Luminary" onClick={() => { setSelectedTier('luminary'); setIsSubscribing(true); setStep(3); }} />
               </div>
 
+              {/* The Radiance Elite Card */}
               <div style={{ border: '1px solid rgba(179, 139, 143, 0.8)', borderRadius: '20px', padding: '40px 30px', backgroundColor: 'rgba(255, 255, 255, 0.9)', flex: '1', minWidth: '300px', maxWidth: '400px', boxShadow: '0 10px 30px rgba(179, 139, 143, 0.25)' }}>
                 <h3 style={{ fontSize: '2.2rem', color: '#B38B8F', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 10px 0', fontWeight: 'bold' }}>The Radiance Elite</h3>
                 <p style={{ fontSize: '1.8rem', color: '#5C5454', margin: '0 0 25px 0', fontFamily: "'Alex Brush', cursive" }}>$119 <span style={{fontSize: '1rem', fontFamily: 'sans-serif', fontStyle: 'italic', color: '#A89999'}}>/ month</span></p>
@@ -759,6 +784,7 @@ function App() {
                 </ul>
                 <EmpowermentButton text="Select Radiance" onClick={() => { setSelectedTier('radiance'); setIsSubscribing(true); setStep(3); }} />
               </div>
+
             </div>
             
             <p style={{ cursor: 'pointer', color: '#A89999', textDecoration: 'underline', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem', transition: 'color 0.3s ease' }} onClick={() => setStep(0)} onMouseOver={(e) => e.target.style.color = '#736A6A'} onMouseOut={(e) => e.target.style.color = '#A89999'}>← Back to Home</p>
@@ -769,12 +795,12 @@ function App() {
         {step === 3 && (
           <div style={{ animation: 'fadeIn 1s ease' }}>
             <h1 style={{ fontSize: '4.2rem', margin: '0 0 10px 0', color: '#B38B8F', fontFamily: "'Alex Brush', cursive", fontWeight: '400', lineHeight: '1.1' }}>
-              Join {selectedTier === 'radiance' ? 'The Radiance Elite' : 'The Luminary Circle'}
+              Join {selectedTier === 'radiance' ? 'The Radiance Elite' : selectedTier === 'basic' ? 'Basic Access' : 'The Luminary Circle'}
             </h1>
-            <p style={{ fontSize: '1.4rem', lineHeight: '1.8', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '15px auto 35px', maxWidth: '600px' }}>Enter your details below to create your account before proceeding to Stripe secure checkout.</p>
+            <p style={{ fontSize: '1.4rem', lineHeight: '1.8', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '15px auto 35px', maxWidth: '600px' }}>Enter your details below to create your account before proceeding.</p>
 
             {isLoading ? (
-              <EmpowermentLoader text="Connecting to payment gateway..." />
+              <EmpowermentLoader text={isSubscribing ? "Connecting to payment gateway..." : "Creating your account..."} />
             ) : (
               <div style={{ maxWidth: '400px', margin: '0 auto' }}>
                 <ElegantInput type="text" name="name" placeholder="Your First Name" value={userDetails.name} onChange={handleInputChange} />
@@ -782,7 +808,7 @@ function App() {
                 <ElegantInput type="password" name="password" placeholder="Create a Password" value={userDetails.password} onChange={handleInputChange} />
                 
                 <div style={{ marginTop: '35px' }}>
-                  <EmpowermentButton text="Proceed to Checkout" onClick={handleCreateAccount} />
+                  <EmpowermentButton text={isSubscribing ? "Proceed to Checkout" : "Create Account"} onClick={handleCreateAccount} />
                 </div>
                 <p style={{ cursor: 'pointer', color: '#A89999', textDecoration: 'underline', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem', marginTop: '20px', transition: 'color 0.3s ease' }} onClick={() => setStep(2)} onMouseOver={(e) => e.target.style.color = '#736A6A'} onMouseOut={(e) => e.target.style.color = '#A89999'}>← Back to Tiers</p>
               </div>
@@ -823,13 +849,13 @@ function App() {
 
             <h1 style={{ fontSize: '3.8rem', margin: '0 0 10px 0', color: '#B38B8F', fontFamily: "'Alex Brush', cursive", fontWeight: '400' }}>Your Member Dashboard</h1>
             <p style={{ fontSize: '1.3rem', lineHeight: '1.6', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '0 auto 30px', maxWidth: '600px' }}>
-              {selectedTier === 'radiance' ? "🌟 Radiance Elite Member — Premium Access Verified." : selectedTier === 'luminary' ? "✨ Luminary Circle Member — Subscription Verified." : "✨ Access verified."}
+              {selectedTier === 'radiance' ? "🌟 Radiance Elite Member — Premium Access Verified." : selectedTier === 'luminary' ? "✨ Luminary Circle Member — Subscription Verified." : "✨ Basic Access Verified."}
             </p>
 
             {!hasCompletedQuiz ? (
               <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', border: '1px solid #E8C5C8', borderRadius: '15px', padding: '40px', boxShadow: '0 4px 15px rgba(232, 197, 200, 0.15)', margin: '40px 0' }}>
                 <h3 style={{ fontSize: '2.2rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 15px 0' }}>Unlock Your Bespoke Routine</h3>
-                <p style={{ fontSize: '1.2rem', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", marginBottom: '30px' }}>As a premium member, you have exclusive access to Susan's Beauty Blueprint curation process. Take the quiz to generate your custom products.</p>
+                <p style={{ fontSize: '1.2rem', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", marginBottom: '30px' }}>Take Susan's Beauty Blueprint curation quiz to generate your custom routine.</p>
                 <EmpowermentButton text="Start the Consultation" onClick={() => setStep(11)} />
               </div>
             ) : (

@@ -31,7 +31,7 @@ const verifyToken = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key');
-    req.user = decoded; // Contains _id, role, membershipTier
+    req.user = decoded; 
     next();
   } catch (err) {
     res.status(403).json({ error: 'Invalid or expired token.' });
@@ -396,6 +396,11 @@ app.get('/api/admin/consultations', requireAdmin, async (req, res) => {
 app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
   try {
     const { tier } = req.body;
+    
+    if (tier === 'basic') {
+      return res.status(400).json({ error: 'Basic tier is free and does not require a Stripe checkout session.' });
+    }
+
     let unit_amount = 4900; 
     let productName = "The Luminary Circle Membership";
     let productDescription = "3-piece skin care ritual box, quarterly 1-on-1 consultation with Susan, and 10% boutique discount.";

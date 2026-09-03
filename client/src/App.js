@@ -70,7 +70,7 @@ const EmpowermentContainer = ({ children }) => (
 const EmpowermentButton = ({ text, onClick }) => (
   <button style={{
     backgroundColor: '#F2D4D7', color: '#5C5454', border: '1px solid #E8C5C8',
-    padding: '12px 50px', fontSize: '32px', fontFamily: "'Alex Brush', cursive", fontWeight: '400',
+    padding: '12px 40px', fontSize: '28px', fontFamily: "'Alex Brush', cursive", fontWeight: '400',
     cursor: 'pointer', transition: 'all 0.5s ease', borderRadius: '30px', boxShadow: '0 4px 15px rgba(232, 197, 200, 0.3)',
   }}
   onClick={onClick}
@@ -568,7 +568,6 @@ function App() {
         const stripeData = await stripeRes.json();
         if (stripeData.url) window.location.href = stripeData.url;
       } else {
-        // Jump directly to the dashboard for free members
         setIsLoading(false);
         setStep(5);
       }
@@ -700,9 +699,10 @@ function App() {
             </div>
             
             <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
-              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
+              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap', justifyContent: 'center' }}>
                 <EmpowermentButton text="Shop the Collection" onClick={() => setStep(1)} />
                 <EmpowermentButton text="Join Membership" onClick={() => setStep(2)} />
+                <EmpowermentButton text="Join Free Access" onClick={() => { setSelectedTier('basic'); setIsSubscribing(false); setStep(3); }} />
               </div>
               <p style={{ cursor: 'pointer', color: '#A89999', textDecoration: 'underline', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem', transition: 'color 0.3s ease', marginTop: '10px' }} onClick={() => setStep(4)} onMouseOver={(e) => e.target.style.color = '#736A6A'} onMouseOut={(e) => e.target.style.color = '#A89999'}>
                 Already a member? Sign in to your dashboard
@@ -750,7 +750,7 @@ function App() {
                   <li><span style={{color: 'transparent', marginRight: '10px'}}>✧</span></li>
                 </ul>
                 <EmpowermentButton 
-                  text="Select Free" 
+                  text="Get Started Free" 
                   onClick={() => { 
                     setSelectedTier('basic'); 
                     setIsSubscribing(false); 
@@ -800,7 +800,7 @@ function App() {
             <p style={{ fontSize: '1.4rem', lineHeight: '1.8', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '15px auto 35px', maxWidth: '600px' }}>Enter your details below to create your account before proceeding.</p>
 
             {isLoading ? (
-              <EmpowermentLoader text={isSubscribing ? "Connecting to payment gateway..." : "Creating your account..."} />
+              <EmpowermentLoader text={isSubscribing ? "Connecting to payment gateway..." : "Creating your free account..."} />
             ) : (
               <div style={{ maxWidth: '400px', margin: '0 auto' }}>
                 <ElegantInput type="text" name="name" placeholder="Your First Name" value={userDetails.name} onChange={handleInputChange} />
@@ -808,7 +808,7 @@ function App() {
                 <ElegantInput type="password" name="password" placeholder="Create a Password" value={userDetails.password} onChange={handleInputChange} />
                 
                 <div style={{ marginTop: '35px' }}>
-                  <EmpowermentButton text={isSubscribing ? "Proceed to Checkout" : "Create Account"} onClick={handleCreateAccount} />
+                  <EmpowermentButton text={isSubscribing ? "Proceed to Checkout" : "Create Free Account"} onClick={handleCreateAccount} />
                 </div>
                 <p style={{ cursor: 'pointer', color: '#A89999', textDecoration: 'underline', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem', marginTop: '20px', transition: 'color 0.3s ease' }} onClick={() => setStep(2)} onMouseOver={(e) => e.target.style.color = '#736A6A'} onMouseOut={(e) => e.target.style.color = '#A89999'}>← Back to Tiers</p>
               </div>
@@ -849,7 +849,7 @@ function App() {
 
             <h1 style={{ fontSize: '3.8rem', margin: '0 0 10px 0', color: '#B38B8F', fontFamily: "'Alex Brush', cursive", fontWeight: '400' }}>Your Member Dashboard</h1>
             <p style={{ fontSize: '1.3rem', lineHeight: '1.6', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '0 auto 30px', maxWidth: '600px' }}>
-              {selectedTier === 'radiance' ? "🌟 Radiance Elite Member — Premium Access Verified." : selectedTier === 'luminary' ? "✨ Luminary Circle Member — Subscription Verified." : "✨ Basic Access Verified."}
+              {selectedTier === 'radiance' ? "🌟 Radiance Elite Member — Premium Access Verified." : selectedTier === 'luminary' ? "✨ Luminary Circle Member — Subscription Verified." : "✨ Basic Access Verified (Free Member)."}
             </p>
 
             {!hasCompletedQuiz ? (

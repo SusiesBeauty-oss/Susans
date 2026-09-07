@@ -11,10 +11,7 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const app = express();
 
 // ---------------- MIDDLEWARE & RATE LIMITING ---------------- //
-app.use(cors({
-  origin: ['https://www.susansbeautyconsulting.com', 'https://susiesbeauty-oss.github.io', 'http://localhost:3000'],
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 
 const authLimiter = rateLimit({
@@ -23,27 +20,33 @@ const authLimiter = rateLimit({
   message: 'Too many authentication attempts, please try again after 15 minutes'
 });
 
-const verifyToken = (req, res, next) => {
+const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   
   if (!token) return res.status(401).json({ error: 'Access denied. No token provided.' });
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key');
-    req.user = decoded; // Contains _id, membershipTier
+    const verified = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret_key');
+    req.user = verified;
     next();
   } catch (err) {
-    res.status(403).json({ error: 'Invalid or expired token.' });
+    res.status(400).json({ error: 'Invalid token.' });
   }
 };
 
-// Middleware checking if membership tier is admin (for Susan's dashboard)
-const verifyAdminTier = (req, res, next) => {
-  if (req.user && req.user.membershipTier === 'admin') {
-    next();
-  } else {
-    res.status(403).json({ error: 'Access denied. Requires admin membership status.' });
+// ---------------- ADMIN MIDDLEWARE ---------------- //
+const requireAdmin = async (req, res, next) => {
+  try {
+    // Calls MongoDB to verify the tier dynamically to ensure up-to-date access rights
+    const user = await User.findById(req.user._id);
+    if (user && user.membershipTier === 'admin') {
+      next();
+    } else {
+      res.status(403).json({ error: 'Access denied. Admin portal clearance required.' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Server error validating admin privileges.' });
   }
 };
 
@@ -54,13 +57,9 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  membershipTier: { 
-    type: String, 
-    enum: ['free', 'basic', 'radiance', 'luminary', 'admin'], 
-    default: 'free' 
-  },
-  consultationData: { type: Object, default: {} }
-}, { timestamps: true });
+  membershipTier: { type: String, default: 'luminary' },
+  createdAt: { type: Date, default: Date.now }
+});
 const User = mongoose.model('User', userSchema);
 
 const consultationSchema = new mongoose.Schema({
@@ -169,7 +168,7 @@ const fetchFromCJEndpoint = async (endpointUrl, accessToken) => {
       if (list.length > 0) {
         itemsList.push(...list);
         page++;
-        await delay(1200); 
+        await delay(1200);
       } else {
         hasMore = false;
       }
@@ -201,10 +200,6 @@ const syncCJProducts = async () => {
     let rawProducts = await fetchFromCJEndpoint('https://developers.cjdropshipping.com/api2.0/v1/product/connect/list', accessToken);
 
     if (rawProducts.length === 0) {
-      console.log("⚠️ No products retrieved from connect/list. Pausing for 2 seconds to avoid rate limits...");
-      await delay(2000); 
-      
-      console.log("🔍 Falling back to query myProduct endpoint...");
       rawProducts = await fetchFromCJEndpoint('https://developers.cjdropshipping.com/api2.0/v1/product/myProduct/query', accessToken);
     }
 
@@ -213,11 +208,12 @@ const syncCJProducts = async () => {
       return;
     }
 
+    // Extract unique Product IDs to fetch full product cards
     const uniquePids = [...new Set(rawProducts.map(item => item.pid || item.id || item.productId))].filter(Boolean);
     console.log(`📦 Fetching full product cards for ${uniquePids.length} unique items...`);
 
     for (const pid of uniquePids) {
-      await delay(1200);
+      await delay(1200); // Gentle throttling
       try {
         const detailRes = await axios.get('https://developers.cjdropshipping.com/api2.0/v1/product/query', {
           headers: { 'CJ-Access-Token': accessToken },
@@ -227,12 +223,16 @@ const syncCJProducts = async () => {
         const details = detailRes.data?.data;
         if (details) {
           const title = details.productNameEn || details.productName;
+          const cleanTitle = title.toLowerCase().trim();
           
+          // Dynamic Shipping Calculation based on weight
           const weight = parseFloat(details.productWeight || 200);
-          const estimatedShipping = 4.50 + (weight * 0.015); 
+          const estimatedShipping = 4.50 + (weight * 0.015); // Base fee + weight metric
           
+          // Map exact variations
           const mappedVariants = (details.variants || []).map(v => {
             const baseVPrice = parseFloat(v.sellPrice || 0);
+            // Ensure shipping cost is factored in before markup
             const finalPrice = baseVPrice > 0 ? parseFloat(((baseVPrice + estimatedShipping) * 3).toFixed(2)) : 19.99;
             
             return {
@@ -269,6 +269,19 @@ const syncCJProducts = async () => {
 
 // ---------------- EXPRESS ROUTES ---------------- //
 
+// Admin Data Route
+app.get('/api/admin/dashboard', authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const totalUsers = await User.countDocuments();
+    const totalConsultations = await Consultation.countDocuments();
+    const members = await User.find({}, 'name email membershipTier createdAt').sort({ createdAt: -1 }).limit(10);
+    
+    res.status(200).json({ totalUsers, totalConsultations, recentMembers: members });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch admin data' });
+  }
+});
+
 app.get('/api/products', async (req, res) => {
   try {
     const { category } = req.query;
@@ -280,50 +293,33 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Free Membership Registration Endpoint (Gathers Info & Grants Access)
-app.post('/api/auth/free-membership', authLimiter, async (req, res) => {
+app.post('/api/users/register', authLimiter, async (req, res) => {
   try {
-    const { name, email, password, skinPreferences } = req.body;
+    const { name, email, password, membershipTier } = req.body;
     
     const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ error: 'An account with this email already exists.' });
-    }
+    if (existingUser) return res.status(400).json({ error: 'Email already in use.' });
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
-    
+
     const newUser = new User({
       name,
       email,
       password: hashedPassword,
-      membershipTier: 'free',
-      consultationData: skinPreferences || {}
+      membershipTier: membershipTier || 'luminary'
     });
 
     const savedUser = await newUser.save();
-    const token = jwt.sign(
-      { _id: savedUser._id, membershipTier: savedUser.membershipTier }, 
-      process.env.JWT_SECRET || 'fallback_secret_key', 
-      { expiresIn: '7d' }
-    );
+    const token = jwt.sign({ _id: savedUser._id }, process.env.JWT_SECRET || 'fallback_secret_key', { expiresIn: '24h' });
 
-    res.status(201).json({
-      token,
-      user: { 
-        id: savedUser._id, 
-        name: savedUser.name, 
-        email: savedUser.email, 
-        membershipTier: savedUser.membershipTier 
-      }
-    });
-  } catch (err) {
-    res.status(500).json({ error: 'Server error during free membership registration.' });
+    res.status(201).json({ user: { id: savedUser._id, name: savedUser.name, email: savedUser.email, membershipTier: savedUser.membershipTier }, token });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Standard Login Endpoint (Passes down the database tier directly, e.g., 'admin' for Susan)
-app.post('/api/auth/login', authLimiter, async (req, res) => {
+app.post('/api/users/login', authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -333,27 +329,15 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ error: 'Invalid email or password.' });
 
-    const token = jwt.sign(
-      { _id: user._id, membershipTier: user.membershipTier }, 
-      process.env.JWT_SECRET || 'fallback_secret_key', 
-      { expiresIn: '24h' }
-    );
+    const token = jwt.sign({ _id: user._id }, process.env.JWT_SECRET || 'fallback_secret_key', { expiresIn: '24h' });
 
-    res.json({ 
-      user: { 
-        id: user._id, 
-        name: user.name, 
-        email: user.email, 
-        membershipTier: user.membershipTier // Will be 'admin' for Susan based on her MongoDB record
-      }, 
-      token 
-    });
+    res.json({ user: { id: user._id, name: user.name, email: user.email, membershipTier: user.membershipTier }, token });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-app.post('/api/consultations', verifyToken, async (req, res) => {
+app.post('/api/consultations', authenticateToken, async (req, res) => {
   try {
     const newConsultation = new Consultation({
       ...req.body,
@@ -366,59 +350,8 @@ app.post('/api/consultations', verifyToken, async (req, res) => {
   }
 });
 
-// ---------------- ADMIN ROUTES (Gated by membershipTier === 'admin') ---------------- //
-
-app.get('/api/admin/stats', verifyToken, verifyAdminTier, async (req, res) => {
-  try {
-    const activeMembers = await User.countDocuments({ membershipTier: { $ne: 'admin' } });
-    const pendingConsultations = await Consultation.countDocuments();
-    const totalProducts = await Product.countDocuments();
-    res.json({ activeMembers, pendingConsultations, totalProducts });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/admin/users', verifyToken, verifyAdminTier, async (req, res) => {
-  try {
-    const users = await User.find({}, '-password').sort({ createdAt: -1 });
-    res.json(users);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Admin Endpoint: View All Members Info for Susan
-app.get('/api/admin/members', verifyToken, verifyAdminTier, async (req, res) => {
-  try {
-    const members = await User.find({}).select('-password').sort({ createdAt: -1 });
-    res.json(members);
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to retrieve member database.' });
-  }
-});
-
-app.post('/api/admin/sync-cj', verifyToken, verifyAdminTier, async (req, res) => {
-  try {
-    syncCJProducts(); 
-    res.json({ message: 'CJ Dropshipping sync initiated successfully.' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/admin/consultations', verifyToken, verifyAdminTier, async (req, res) => {
-  try {
-    const consultations = await Consultation.find().populate('userId', 'name email').sort({ createdAt: -1 });
-    res.json(consultations);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ---------------- CHECKOUT ROUTES ---------------- //
-
-app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
+// Subscription Membership Checkout
+app.post('/api/create-checkout-session', authenticateToken, async (req, res) => {
   try {
     const { tier } = req.body;
     let unit_amount = 4900; 
@@ -443,8 +376,8 @@ app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
         },
         quantity: 1,
       }],
-      success_url: `https://www.susansbeautyconsulting.com/?success=true&tier=${tier}`,
-      cancel_url: `https://www.susansbeautyconsulting.com/?canceled=true`,
+      success_url: `http://localhost:3000/?success=true&tier=${tier}`,
+      cancel_url: `http://localhost:3000/?canceled=true`,
     });
 
     res.json({ url: session.url });
@@ -453,6 +386,7 @@ app.post('/api/create-checkout-session', verifyToken, async (req, res) => {
   }
 });
 
+// Single Purchase Cart Checkout
 app.post('/api/cart-checkout', async (req, res) => {
   try {
     const { items } = req.body;
@@ -471,15 +405,9 @@ app.post('/api/cart-checkout', async (req, res) => {
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       mode: 'payment',
-      shipping_address_collection: {
-        allowed_countries: ['US', 'CA', 'GB', 'AU'], 
-      },
-      metadata: {
-        skus: items.map(i => i.sku).join(',').substring(0, 499) 
-      },
       line_items,
-      success_url: `https://www.susansbeautyconsulting.com/?cart_success=true`,
-      cancel_url: `https://www.susansbeautyconsulting.com/?cart_canceled=true`,
+      success_url: `http://localhost:3000/?cart_success=true`,
+      cancel_url: `http://localhost:3000/?cart_canceled=true`,
     });
 
     res.json({ url: session.url });

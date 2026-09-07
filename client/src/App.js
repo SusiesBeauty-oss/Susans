@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Configurable API URL matching your backend deployment
-const API_URL = process.env.REACT_APP_API_URL || 'https://susans.onrender.com';
-
+// Helper function to enforce global naming updates across components
 const getDisplayTitle = (product) => {
   if (!product || !product.title) return '';
   let displayTitle = product.title;
@@ -125,7 +123,7 @@ const EmpowermentLoader = ({ text }) => (
 const BlueprintCard = ({ label, value }) => (
   <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', border: '1px solid #E8C5C8', borderRadius: '15px', padding: '20px', boxShadow: '0 4px 15px rgba(232, 197, 200, 0.15)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
     <p style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: '#A89999', fontFamily: "'Cormorant Garamond', serif", fontStyle: 'italic' }}>{label}</p>
-    <p style={{ margin: 0, fontSize: '1.4rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", fontWeight: 'bold' }}>{value !== undefined ? value : 'Not specified'}</p>
+    <p style={{ margin: 0, fontSize: '1.4rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", fontWeight: 'bold' }}>{value || 'Not specified'}</p>
   </div>
 );
 
@@ -314,20 +312,14 @@ function App() {
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
-  // Admin Data State
-  const [adminStats, setAdminStats] = useState({ activeMembers: 0, pendingConsultations: 0, totalProducts: 0 });
-  const [adminMembers, setAdminMembers] = useState([]);
-  const [showMemberTable, setShowMemberTable] = useState(false);
-
   const [quizAnswers, setQuizAnswers] = useState({ skinType: '', primaryGoal: '', climate: '', skinSensitivity: '', complexion: '', undertone: '', eyeColor: '', faceShape: '', makeupVibe: '', routineFocus: '' });
-  
-  const [userDetails, setUserDetails] = useState({ name: '', email: '', password: '', role: 'user' });
+  const [userDetails, setUserDetails] = useState({ name: '', email: '', password: '' });
   const [loginCredentials, setLoginCredentials] = useState({ email: '', password: '' });
 
   useEffect(() => {
     const fetchBackendData = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/products`);
+        const response = await fetch('http://localhost:5000/api/products');
         if (response.ok) {
           const data = await response.json();
           setBackendProducts(data);
@@ -363,37 +355,6 @@ function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (step === 6) {
-      fetchAdminData();
-    }
-  }, [step]);
-
-  const fetchAdminData = async () => {
-    const token = localStorage.getItem('token');
-    if (!token) return;
-
-    try {
-      const statsRes = await fetch(`${API_URL}/api/admin/stats`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (statsRes.ok) {
-        const statsData = await statsRes.json();
-        setAdminStats(statsData);
-      }
-
-      const usersRes = await fetch(`${API_URL}/api/admin/users`, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (usersRes.ok) {
-        const usersData = await usersRes.json();
-        setAdminMembers(usersData);
-      }
-    } catch (err) {
-      console.error('Failed to load admin stats/users:', err);
-    }
-  };
-
   const handleAddToCart = (product) => {
     setCart(prevCart => {
       const existingItem = prevCart.find(item => item.sku === product.sku);
@@ -420,7 +381,7 @@ function App() {
   const handleCartCheckout = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/cart-checkout`, {
+      const res = await fetch('http://localhost:5000/api/cart-checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: cart })
@@ -431,23 +392,6 @@ function App() {
       }
     } catch (error) {
       console.error('Checkout error:', error);
-    }
-    setIsLoading(false);
-  };
-
-  const triggerCjSync = async () => {
-    setIsLoading(true);
-    const token = localStorage.getItem('token');
-    try {
-      const res = await fetch(`${API_URL}/api/admin/sync-cj`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      alert(data.message || 'CJ Sync initiated');
-      fetchAdminData();
-    } catch (err) {
-      alert('Failed to trigger CJ catalog sync.');
     }
     setIsLoading(false);
   };
@@ -525,7 +469,7 @@ function App() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      await fetch(`${API_URL}/api/consultations`, {
+      await fetch('http://localhost:5000/api/consultations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(finalData), 
@@ -546,7 +490,7 @@ function App() {
   const handleCreateAccount = async () => {
     setIsLoading(true);
     try {
-      const regRes = await fetch(`${API_URL}/api/users/register`, {
+      const regRes = await fetch('http://localhost:5000/api/users/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...userDetails, membershipTier: selectedTier })
@@ -562,7 +506,7 @@ function App() {
       localStorage.setItem('token', regData.token);
 
       if (isSubscribing) {
-        const stripeRes = await fetch(`${API_URL}/api/create-checkout-session`, {
+        const stripeRes = await fetch('http://localhost:5000/api/create-checkout-session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${regData.token}` },
           body: JSON.stringify({ tier: selectedTier }),
@@ -570,9 +514,6 @@ function App() {
         
         const stripeData = await stripeRes.json();
         if (stripeData.url) window.location.href = stripeData.url;
-      } else {
-        setIsLoading(false);
-        setStep(5);
       }
     } catch (err) {
       console.error('Failed to save user account:', err);
@@ -583,7 +524,7 @@ function App() {
   const handleLoginSubmit = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/users/login`, {
+      const res = await fetch('http://localhost:5000/api/users/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(loginCredentials)
@@ -592,11 +533,10 @@ function App() {
       
       if (res.ok) {
         localStorage.setItem('token', data.token);
-        setUserDetails(prev => ({ ...prev, name: data.user.name, role: data.user.role }));
+        setUserDetails(prev => ({ ...prev, name: data.user.name }));
         setSelectedTier(data.user.membershipTier);
         setIsSubscribing(data.user.membershipTier !== 'basic');
-        
-        setStep(data.user.role === 'admin' ? 6 : 5); 
+        setStep(5); 
       } else {
         alert(data.error || 'Login failed');
       }
@@ -608,7 +548,7 @@ function App() {
 
   const handleLogOut = () => {
     localStorage.removeItem('token');
-    setUserDetails({ name: '', email: '', password: '', role: 'user' });
+    setUserDetails({ name: '', email: '', password: '' });
     setLoginCredentials({ email: '', password: '' });
     setSelectedTier('luminary');
     setHasCompletedQuiz(false);
@@ -740,28 +680,6 @@ function App() {
             <p style={{ fontSize: '1.4rem', lineHeight: '1.8', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '15px auto 35px', maxWidth: '600px' }}>Join our exclusive membership to unlock Susan's famous Personalized Beauty Consultation Quiz and bespoke product curation.</p>
 
             <div style={{ display: 'flex', justifyContent: 'center', gap: '30px', flexWrap: 'wrap', marginBottom: '35px' }}>
-              
-              {/* Basic Access Card */}
-              <div style={{ border: '1px solid rgba(232, 197, 200, 0.6)', borderRadius: '20px', padding: '40px 30px', backgroundColor: 'rgba(255, 255, 255, 0.7)', flex: '1', minWidth: '300px', maxWidth: '400px', boxShadow: '0 10px 30px rgba(232, 197, 200, 0.15)' }}>
-                <h3 style={{ fontSize: '2.2rem', color: '#8A797A', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 10px 0' }}>Basic Access</h3>
-                <p style={{ fontSize: '1.8rem', color: '#5C5454', margin: '0 0 25px 0', fontFamily: "'Alex Brush', cursive" }}>Free</p>
-                <ul style={{ textAlign: 'left', listStyle: 'none', padding: 0, margin: '0 0 35px 0', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.25rem', lineHeight: '2' }}>
-                  <li><span style={{color: '#E8C5C8', marginRight: '10px'}}>✧</span> Full access to the Boutique</li>
-                  <li><span style={{color: '#E8C5C8', marginRight: '10px'}}>✧</span> Save your ritual bag</li>
-                  <li><span style={{color: '#E8C5C8', marginRight: '10px'}}>✧</span> Personal member dashboard</li>
-                  <li><span style={{color: 'transparent', marginRight: '10px'}}>✧</span></li>
-                </ul>
-                <EmpowermentButton 
-                  text="Select Free" 
-                  onClick={() => { 
-                    setSelectedTier('basic'); 
-                    setIsSubscribing(false); 
-                    setStep(3); 
-                  }} 
-                />
-              </div>
-
-              {/* The Luminary Circle Card */}
               <div style={{ border: '1px solid rgba(232, 197, 200, 0.6)', borderRadius: '20px', padding: '40px 30px', backgroundColor: 'rgba(255, 255, 255, 0.7)', flex: '1', minWidth: '300px', maxWidth: '400px', boxShadow: '0 10px 30px rgba(232, 197, 200, 0.15)' }}>
                 <h3 style={{ fontSize: '2.2rem', color: '#8A797A', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 10px 0' }}>The Luminary Circle</h3>
                 <p style={{ fontSize: '1.8rem', color: '#5C5454', margin: '0 0 25px 0', fontFamily: "'Alex Brush', cursive" }}>$49 <span style={{fontSize: '1rem', fontFamily: 'sans-serif', fontStyle: 'italic', color: '#A89999'}}>/ month</span></p>
@@ -774,7 +692,6 @@ function App() {
                 <EmpowermentButton text="Select Luminary" onClick={() => { setSelectedTier('luminary'); setIsSubscribing(true); setStep(3); }} />
               </div>
 
-              {/* The Radiance Elite Card */}
               <div style={{ border: '1px solid rgba(179, 139, 143, 0.8)', borderRadius: '20px', padding: '40px 30px', backgroundColor: 'rgba(255, 255, 255, 0.9)', flex: '1', minWidth: '300px', maxWidth: '400px', boxShadow: '0 10px 30px rgba(179, 139, 143, 0.25)' }}>
                 <h3 style={{ fontSize: '2.2rem', color: '#B38B8F', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 10px 0', fontWeight: 'bold' }}>The Radiance Elite</h3>
                 <p style={{ fontSize: '1.8rem', color: '#5C5454', margin: '0 0 25px 0', fontFamily: "'Alex Brush', cursive" }}>$119 <span style={{fontSize: '1rem', fontFamily: 'sans-serif', fontStyle: 'italic', color: '#A89999'}}>/ month</span></p>
@@ -786,7 +703,6 @@ function App() {
                 </ul>
                 <EmpowermentButton text="Select Radiance" onClick={() => { setSelectedTier('radiance'); setIsSubscribing(true); setStep(3); }} />
               </div>
-
             </div>
             
             <p style={{ cursor: 'pointer', color: '#A89999', textDecoration: 'underline', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem', transition: 'color 0.3s ease' }} onClick={() => setStep(0)} onMouseOver={(e) => e.target.style.color = '#736A6A'} onMouseOut={(e) => e.target.style.color = '#A89999'}>← Back to Home</p>
@@ -797,12 +713,12 @@ function App() {
         {step === 3 && (
           <div style={{ animation: 'fadeIn 1s ease' }}>
             <h1 style={{ fontSize: '4.2rem', margin: '0 0 10px 0', color: '#B38B8F', fontFamily: "'Alex Brush', cursive", fontWeight: '400', lineHeight: '1.1' }}>
-              Join {selectedTier === 'radiance' ? 'The Radiance Elite' : selectedTier === 'basic' ? 'Basic Access' : 'The Luminary Circle'}
+              Join {selectedTier === 'radiance' ? 'The Radiance Elite' : 'The Luminary Circle'}
             </h1>
-            <p style={{ fontSize: '1.4rem', lineHeight: '1.8', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '15px auto 35px', maxWidth: '600px' }}>Enter your details below to create your account before proceeding.</p>
+            <p style={{ fontSize: '1.4rem', lineHeight: '1.8', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '15px auto 35px', maxWidth: '600px' }}>Enter your details below to create your account before proceeding to Stripe secure checkout.</p>
 
             {isLoading ? (
-              <EmpowermentLoader text={isSubscribing ? "Connecting to payment gateway..." : "Creating your account..."} />
+              <EmpowermentLoader text="Connecting to payment gateway..." />
             ) : (
               <div style={{ maxWidth: '400px', margin: '0 auto' }}>
                 <ElegantInput type="text" name="name" placeholder="Your First Name" value={userDetails.name} onChange={handleInputChange} />
@@ -810,7 +726,7 @@ function App() {
                 <ElegantInput type="password" name="password" placeholder="Create a Password" value={userDetails.password} onChange={handleInputChange} />
                 
                 <div style={{ marginTop: '35px' }}>
-                  <EmpowermentButton text={isSubscribing ? "Proceed to Checkout" : "Create Account"} onClick={handleCreateAccount} />
+                  <EmpowermentButton text="Proceed to Checkout" onClick={handleCreateAccount} />
                 </div>
                 <p style={{ cursor: 'pointer', color: '#A89999', textDecoration: 'underline', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem', marginTop: '20px', transition: 'color 0.3s ease' }} onClick={() => setStep(2)} onMouseOver={(e) => e.target.style.color = '#736A6A'} onMouseOut={(e) => e.target.style.color = '#A89999'}>← Back to Tiers</p>
               </div>
@@ -851,13 +767,13 @@ function App() {
 
             <h1 style={{ fontSize: '3.8rem', margin: '0 0 10px 0', color: '#B38B8F', fontFamily: "'Alex Brush', cursive", fontWeight: '400' }}>Your Member Dashboard</h1>
             <p style={{ fontSize: '1.3rem', lineHeight: '1.6', fontFamily: "'Cormorant Garamond', serif", color: '#736A6A', margin: '0 auto 30px', maxWidth: '600px' }}>
-              {selectedTier === 'radiance' ? "🌟 Radiance Elite Member — Premium Access Verified." : selectedTier === 'luminary' ? "✨ Luminary Circle Member — Subscription Verified." : "✨ Basic Access Verified."}
+              {selectedTier === 'radiance' ? "🌟 Radiance Elite Member — Premium Access Verified." : selectedTier === 'luminary' ? "✨ Luminary Circle Member — Subscription Verified." : "✨ Access verified."}
             </p>
 
             {!hasCompletedQuiz ? (
               <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.8)', border: '1px solid #E8C5C8', borderRadius: '15px', padding: '40px', boxShadow: '0 4px 15px rgba(232, 197, 200, 0.15)', margin: '40px 0' }}>
                 <h3 style={{ fontSize: '2.2rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 15px 0' }}>Unlock Your Bespoke Routine</h3>
-                <p style={{ fontSize: '1.2rem', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", marginBottom: '30px' }}>Take Susan's Beauty Blueprint curation quiz to generate your custom routine.</p>
+                <p style={{ fontSize: '1.2rem', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", marginBottom: '30px' }}>As a premium member, you have exclusive access to Susan's Beauty Blueprint curation process. Take the quiz to generate your custom products.</p>
                 <EmpowermentButton text="Start the Consultation" onClick={() => setStep(11)} />
               </div>
             ) : (
@@ -890,56 +806,6 @@ function App() {
                   </div>
                 </div>
               </>
-            )}
-          </div>
-        )}
-
-        {/* STEP 6: ADMIN PORTAL */}
-        {step === 6 && (
-          <div style={{ animation: 'fadeIn 1.5s ease', textAlign: 'left', width: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '1px solid rgba(232, 197, 200, 0.4)', paddingBottom: '15px' }}>
-              <span style={{ fontFamily: "'Cormorant Garamond', serif", fontStyle: 'italic', color: '#A89999', fontSize: '1.2rem' }}>Susan's Operations Control</span>
-              <button onClick={handleLogOut} style={{ background: 'none', border: '1px solid #E8C5C8', borderRadius: '20px', padding: '5px 15px', color: '#736A6A', fontFamily: "'Cormorant Garamond', serif", cursor: 'pointer', fontSize: '1rem' }}>Sign Out</button>
-            </div>
-
-            <h1 style={{ fontSize: '3.8rem', margin: '0 0 10px 0', color: '#B38B8F', fontFamily: "'Alex Brush', cursive", fontWeight: '400' }}>Admin Portal</h1>
-            
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '40px' }}>
-              <BlueprintCard label="Active Members" value={adminStats.activeMembers} />
-              <BlueprintCard label="Completed Consultations" value={adminStats.pendingConsultations} />
-              <BlueprintCard label="Total Inventory Items" value={adminStats.totalProducts} />
-            </div>
-
-            <h2 style={{ fontSize: '2.5rem', color: '#5C5454', fontFamily: "'Cormorant Garamond', serif", margin: '0 0 20px 0' }}>Quick Actions</h2>
-            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', marginBottom: '30px' }}>
-              <EmpowermentButton text="Sync CJ Catalog" onClick={triggerCjSync} />
-              <EmpowermentButton text={showMemberTable ? "Hide Member Data" : "View Member Data"} onClick={() => setShowMemberTable(!showMemberTable)} />
-            </div>
-
-            {showMemberTable && (
-              <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.9)', border: '1px solid #E8C5C8', borderRadius: '15px', padding: '20px', marginTop: '20px', overflowX: 'auto' }}>
-                <h3 style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: '1.8rem', color: '#5C5454', marginTop: 0 }}>Registered Members</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Cormorant Garamond', serif", fontSize: '1.1rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #E8C5C8', textAlign: 'left', color: '#B38B8F' }}>
-                      <th style={{ padding: '10px' }}>Name</th>
-                      <th style={{ padding: '10px' }}>Email</th>
-                      <th style={{ padding: '10px' }}>Membership Tier</th>
-                      <th style={{ padding: '10px' }}>Role</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {adminMembers.map((m) => (
-                      <tr key={m._id} style={{ borderBottom: '1px solid rgba(232, 197, 200, 0.4)' }}>
-                        <td style={{ padding: '10px' }}>{m.name}</td>
-                        <td style={{ padding: '10px' }}>{m.email}</td>
-                        <td style={{ padding: '10px', textTransform: 'capitalize' }}>{m.membershipTier}</td>
-                        <td style={{ padding: '10px' }}>{m.role}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
             )}
           </div>
         )}
